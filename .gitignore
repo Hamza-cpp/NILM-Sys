@@ -1,5 +1,6 @@
 .venv/
 **/__pycache__/
+**/*.py.bak
 .vscode/
 microwave_out/
 outputs/

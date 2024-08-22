@@ -1,16 +1,25 @@
-# -*- coding: utf-8 -*-
-import os
-import sys
+# Copyright 2024 OKHADIR Hamza
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from datetime import datetime
 from argparse import ArgumentParser
 
 import torch
 from ray import tune
 
-from src.utils import error, load_yaml
-from src.train import train_model
-from src.test import test_model
+from .src.utils import load_yaml
+from .src.train import train_model
+from .src.test import test_model
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -28,7 +37,7 @@ def get_arguments():
     --train
       Set to train or unset to test
     --tune
-      Set to enable automatic architecture hyperparameters tunning 
+      Set to enable automatic architecture hyperparameters tunning
     --epochs
       Number of epochs to train
     --disable-plot
@@ -80,7 +89,7 @@ def main():
         # DO TRAIN
 
         print("==========================================")
-        print(f"Training ONGOING")
+        print("Training ONGOING")
         print("==========================================")
 
         if not tune_enabled:
@@ -119,22 +128,22 @@ def main():
                 config=config,
             )
             print("==========================================")
-            print(f"Best hyperparameters")
-            print(analysis.best_config)
+            print("Best hyperparameters")
+            print((analysis.best_config))
             print("==========================================")
 
         print("==========================================")
-        print(f"Training DONE")
+        print("Training DONE")
         print("==========================================")
     else:
         # DO TEST
 
         print("==========================================")
-        print(f"Testing ONGOING")
+        print("Testing ONGOING")
         print("==========================================")
         test_model(datapath, output, appliance, hparams, doplot=not plot_disabled)
         print("==========================================")
-        print(f"Testing DONE")
+        print("Testing DONE")
         print("==========================================")
 
 
