@@ -1,17 +1,30 @@
-# -*- coding: utf-8 -*-
-import os
+# Copyright 2024 OKHADIR Hamza
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import sys
-
-sys.path.append("/content/gdrive/MyDrive/ColabNotebooks")
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+sys.path.append("/content/gdrive/MyDrive/ColabNotebooks")
+
 
 class AdditiveAttention(torch.nn.Module):
     """
     Attention mechanism for the models
     """
+
     def __init__(self, dim=5):
         super().__init__()
 
@@ -36,6 +49,7 @@ class AdditiveAttention(torch.nn.Module):
         )  # sum elements in dimension 1 (seq_length) [batch, 2*h]
         return output, alphas
 
+
 class AdditiveAttentionBackwards(AdditiveAttention):
     """
     Attention mechanism for the models
@@ -49,12 +63,14 @@ class AdditiveAttentionBackwards(AdditiveAttention):
         output, alphas = super().forward(h)
         return output
 
+
 class ModelPaper(nn.Module):
     """
     Implementation of the network architecture described
     in the paper
     Both regression and classification branches enabled
     """
+
     def __init__(self, l, filters, kernel, hunits):
         super().__init__()
 
@@ -84,9 +100,7 @@ class ModelPaper(nn.Module):
 
         self.attention = AdditiveAttention(dim=(2 * hunits))
         self.regression = nn.Sequential(
-            nn.Linear(2 * hunits, hunits),
-            nn.ReLU(),
-            nn.Linear(hunits, l)
+            nn.Linear(2 * hunits, hunits), nn.ReLU(), nn.Linear(hunits, l)
         )
 
         self.classification1 = nn.Sequential(
@@ -109,10 +123,7 @@ class ModelPaper(nn.Module):
         )  # flatten --> [batch, (l-33)*50]
 
         self.classification3 = nn.Sequential(
-            nn.Linear((l - 33) * 50, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, l),
-            nn.Sigmoid()
+            nn.Linear((l - 33) * 50, 1024), nn.ReLU(), nn.Linear(1024, l), nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -128,6 +139,7 @@ class ModelPaper(nn.Module):
         y = reg * clas
         return y, reg, alphas, clas
 
+
 class ModelPaperBackward(nn.Module):
     """
     Implementation of the network architecture described
@@ -139,6 +151,7 @@ class ModelPaperBackward(nn.Module):
 
     Both regression and classification branches enabled
     """
+
     def __init__(self, l, filters, kernel, hunits):
         super().__init__()
 
@@ -167,9 +180,7 @@ class ModelPaperBackward(nn.Module):
         # output [batch, l-x(from convs), 2*hunits]
 
         self.regression = nn.Sequential(
-            AdditiveAttentionBackwards(
-                dim=2 * hunits
-            ),
+            AdditiveAttentionBackwards(dim=2 * hunits),
             # input [batch, l (LSTM), 2*hunits]
             # output [batch, 2*hunits]
             nn.Linear(2 * hunits, hunits),
@@ -197,10 +208,7 @@ class ModelPaperBackward(nn.Module):
         )  # flatten --> [batch, (l-33)*50]
 
         self.classification3 = nn.Sequential(
-            nn.Linear((l - 33) * 50, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, l),
-            nn.Sigmoid()
+            nn.Linear((l - 33) * 50, 1024), nn.ReLU(), nn.Linear(1024, l), nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -217,6 +225,7 @@ class ModelPaperBackward(nn.Module):
         alphas = torch.zeros(reg.shape)
         return y, reg, alphas, clas
 
+
 class ModelOnlyRegression(nn.Module):
     """
     Implementation of the network architecture described
@@ -226,6 +235,7 @@ class ModelOnlyRegression(nn.Module):
 
     Only regression branch enabled
     """
+
     def __init__(self, l, filters, kernel, hunits):
         super().__init__()
 
@@ -255,9 +265,7 @@ class ModelOnlyRegression(nn.Module):
 
         self.attention = AdditiveAttention(dim=(2 * hunits))
         self.regression = nn.Sequential(
-            nn.Linear(2 * hunits, hunits),
-            nn.ReLU(),
-            nn.Linear(hunits, l)
+            nn.Linear(2 * hunits, hunits), nn.ReLU(), nn.Linear(hunits, l)
         )
 
     def forward(self, x):
@@ -271,6 +279,7 @@ class ModelOnlyRegression(nn.Module):
         clas = reg  # TEMPFIX to make it easy to integrate to de code (?)
         return y, reg, alphas, clas
 
+
 class ModelClassAttention(nn.Module):
     """
     Implementation of the network architecture described
@@ -279,6 +288,7 @@ class ModelClassAttention(nn.Module):
 
     Both regression and classification branches enabled
     """
+
     def __init__(self, l, filters, kernel, hunits):
         super().__init__()
 
@@ -308,9 +318,7 @@ class ModelClassAttention(nn.Module):
 
         self.attention = AdditiveAttention(dim=(2 * hunits))
         self.regression = nn.Sequential(
-            nn.Linear(2 * hunits, hunits),
-            nn.ReLU(),
-            nn.Linear(hunits, l)
+            nn.Linear(2 * hunits, hunits), nn.ReLU(), nn.Linear(hunits, l)
         )
 
         self.classification1 = nn.Sequential(

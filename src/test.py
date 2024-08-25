@@ -1,21 +1,28 @@
-# -*- coding: utf-8 -*-
+# Copyright 2024 OKHADIR Hamza
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os
-import sys
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 
 import src.model.model as nilmmodel
-import matplotlib.pyplot as plt
 
 from src.data.dataset import InMemoryKoreaDataset
 from src.utils import error
-from src.utils import save_model, load_model, save_dataset
+from src.utils import load_model
 from src.utils import plot_window
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -25,7 +32,7 @@ def test_single(
     model, test_loader, transform, appliance, batch_size=64, plotfilename=None
 ):
     """
-    Test specific pretrained model and appliance on test dataset 
+    Test specific pretrained model and appliance on test dataset
     """
 
     errs, losses = [], []
@@ -75,7 +82,6 @@ def test_single(
                     and transform["target_mean"]
                     and transform["target_std"]
                 ):
-
                     # Undo standarization
                     x = (x * transform["sample_std"]) + transform["sample_mean"]
                     y = (y * transform["target_std"]) + transform["target_mean"]
@@ -149,7 +155,7 @@ def test_single(
     final_y = np.array(final_y)
     final_yhat = np.array(final_yhat)
 
-    filename = plotfilename + f".result.csv"
+    filename = plotfilename + ".result.csv"
     result = pd.DataFrame({"y": final_y, "yhat": final_yhat})
     result.to_csv(filename, index=None, sep=";")
 
