@@ -7,3 +7,4 @@ outputs/
 logs/
 notebooks/NILM-Sys.ipynb
 README.md
+.venv_py310/
