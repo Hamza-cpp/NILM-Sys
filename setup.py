@@ -14,12 +14,12 @@
 
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="NILM-Sys",
-    version="0.1.0",
+    version="0.1.1",
     author="OKHADIR Hamza",
     author_email="hamza.okhadir2018@gmail.com",
     description="NILM-Sys focuses on optimizing energy consumption in buildings through Non-Intrusive Load Monitoring (NILM). By leveraging advanced neural network architectures, the system disaggregates aggregate power data to estimate the power usage of individual appliances, contributing to climate change mitigation by enhancing energy efficiency in building",
@@ -32,16 +32,16 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     install_requires=[
-        "numpy==1.19.5",
-        "scikit-learn==0.24.1",
-        "scipy==1.6.0",
-        "pandas==1.2.1",
-        "PyYAML==5.4.1",
-        "torch==1.7.1",
-        "matplotlib==3.5.3",
-        "ray[tune]==2.7.2",
-        "ipykernel==6.16.2",
+        "numpy==1.24.3",
+        "scikit-learn==1.5.1",
+        "scipy==1.14.1",
+        "pandas==2.2.2",
+        "PyYAML==6.0.2",
+        "torch==2.4.0",
+        "matplotlib==3.9.2",
+        "ray[tune]==2.34.0",
+        "ipykernel==6.29.5",
     ],
 )

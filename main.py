@@ -17,9 +17,9 @@ from argparse import ArgumentParser
 import torch
 from ray import tune
 
-from .src.utils import load_yaml
-from .src.train import train_model
-from .src.test import test_model
+from src.utils import load_yaml
+from src.train import train_model
+from src.test import test_model
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -129,7 +129,7 @@ def main():
             )
             print("==========================================")
             print("Best hyperparameters")
-            print((analysis.best_config))
+            print(analysis.best_config)
             print("==========================================")
 
         print("==========================================")
