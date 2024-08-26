@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from argparse import ArgumentParser
+import argparse
 
 import torch
 from ray import tune
@@ -24,36 +24,67 @@ from src.test import test_model
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-def get_arguments():
+def parse_command_line_arguments() -> argparse.Namespace:
     """
-    Command line arguments parser
-    --settings
-      Path to settings yaml file where all disaggregation scenarios
-      and model hyperparameters are described
-    --appliance
-      Name of the appliance to train or test
-    --path
-      Path to output folder where resuls are saved
-    --train
-      Set to train or unset to test
-    --tune
-      Set to enable automatic architecture hyperparameters tunning
-    --epochs
-      Number of epochs to train
-    --disable-plot
-      Disable sliding window plotting during train or test
-    --disable-random
-      Disable randomness in processing
+    Parse command line arguments
+
+    Supported arguments:
+
+        --settings: Path to settings yaml file where all disaggregation scenarios
+                    and model hyperparameters are described
+        --appliance: Name of the appliance to train or test
+        --path: Path to output folder where results are saved
+        --train: Set to train or unset to test
+        --tune: Set to enable automatic architecture hyperparameters tunning
+        --epochs: Number of epochs to train
+        --disable-plot: Disable sliding window plotting during train or test
+        --disable-random: Disable randomness in processing
     """
-    parser = ArgumentParser(description="nilm-project")
-    parser.add_argument("--settings")
-    parser.add_argument("--appliance")
-    parser.add_argument("--path")
-    parser.add_argument("--train", action="store_true")
-    parser.add_argument("--tune", action="store_true")
-    parser.add_argument("--epochs")
-    parser.add_argument("--disable-plot", action="store_true")
-    parser.add_argument("--disable-random", action="store_true")
+    parser = argparse.ArgumentParser(
+        description="NILM-Sys focuses on optimizing energy consumption in buildings "
+        "through Non-Intrusive Load Monitoring (NILM). By leveraging advanced "
+        "neural network architectures, the system disaggregates aggregate power "
+        "data to estimate the power usage of individual appliances, contributing "
+        "to climate change mitigation by enhancing energy efficiency in building"
+    )
+
+    parser.add_argument(
+        "--settings", required=True, help="Settings yaml file path", type=str
+    )
+    parser.add_argument(
+        "--appliance",
+        required=True,
+        help="Name of the appliance to train or test",
+        type=str,
+    )
+    parser.add_argument(
+        "--path", required=True, help="Output folder path", type=str                
+    )
+    parser.add_argument(
+        "--train", action="store_true", help="Train if set, test if unset"
+    )
+    parser.add_argument(
+        "--tune", action="store_true", help="Enable automatic hyperparameters tunning"
+    )
+    parser.add_argument(
+        "--epochs", type=int, help="Number of epochs to train", default=5
+    )
+    parser.add_argument(
+        "--disable-plot",
+        action="store_true",
+        help="Disable sliding window plotting during train or test",
+    )
+    parser.add_argument(
+        "--disable-random", action="store_true", help="Disable randomness in processing"
+    )
+    # Check for null pointer references
+    if not parser.parse_args().settings:
+        raise ValueError("Settings path is null")
+    if not parser.parse_args().appliance:
+        raise ValueError("Appliance name is null")
+    if not parser.parse_args().path:
+        raise ValueError("Output folder path is null")
+
     return parser.parse_args()
 
 
@@ -62,7 +93,7 @@ def main():
     Main task called from command line. Command line arguments
     and train or test is launched
     """
-    args = get_arguments()
+    args = parse_command_line_arguments()
 
     if args.disable_random:  # Disable randomness
         torch.manual_seed(7)
@@ -74,17 +105,33 @@ def main():
 
     # Load settings from YAML file where generic and appliance
     # specific details and model hyperparmeters are described
+    if args.settings is None:
+        raise ValueError("settings.yaml file path must be provided")
+
     settings = load_yaml(args.settings)
-    appliance = args.appliance
+    if settings is None:
+        raise ValueError("Settings file is not valid")
+
+    appliance_name = args.appliance
+    if appliance_name is None:
+        raise ValueError("Appliance name must be provided")
 
     dataset = settings["dataset"]
+    if dataset is None:
+        raise ValueError("Dataset path must be provided in the setings.yaml file")
+
     hparams = settings["hparams"]
     if args.epochs:
         hparams["epochs"] = int(args.epochs)
 
-    appliance = settings["appliances"][appliance]
+    appliance = settings["appliances"].get(appliance_name)
+    if appliance is None:
+        raise ValueError(f"Appliance '{appliance_name}' does not exist")
 
     datapath = dataset["path"]
+    if datapath is None:
+        raise ValueError("Dataset path must be provided in the setings.yaml file")
+
     if train:
         # DO TRAIN
 
