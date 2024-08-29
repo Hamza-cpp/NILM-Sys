@@ -18,7 +18,7 @@ import random
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 
 import src.data.redd as redd
@@ -352,17 +352,45 @@ class NilmDataset:
 
 class InMemoryDataset(Dataset):
     """
-    Inmemory dataset
-    WARNING: Not the best option due potential memory overrun but did not fail
-       Not used in current analysis due already preprocessed available
-       dataset (non-public available and obtained once project ongoing).
+    In-memory dataset for NILM (Non-Intrusive Load Monitoring) tasks.
+
+    WARNING: This dataset is stored entirely in memory, which may lead to
+    potential memory overrun issues depending on the size of the dataset.
+    Not used in current analysis due to the availability of preprocessed
+    datasets (non-public available and obtained during the ongoing project).
     """
 
     def __init__(
-        self, spec, path, buildings, appliance, windowsize=34459, start=None, end=None
-    ):
-        super().__init__()
+        self,
+        spec: str,
+        path: str,
+        buildings: List[str],
+        appliance: str,
+        windowsize: int = 34459,
+        start: Optional[pd.Timestamp] = None,
+        end: Optional[pd.Timestamp] = None,
+    ) -> None:
+        """
+        Initializes the InMemoryDataset.
 
+        Parameters
+        ----------
+        spec : str
+            Path to the dataset specification file.
+        path : str
+            Path to the root directory of the dataset.
+        buildings : List[str]
+            List of building names to include in the dataset.
+        appliance : str
+            The appliance ID for which the data is being collected.
+        windowsize : int, optional
+            Size of the sliding window, by default 34459.
+        start : pd.Timestamp, optional
+            Start time for filtering data, by default None.
+        end : pd.Timestamp, optional
+            End time for filtering data, by default None.
+        """
+        super().__init__()
         self.buildings = buildings
         self.appliance = appliance
         self.windowsize = windowsize
@@ -370,36 +398,56 @@ class InMemoryDataset(Dataset):
         dataset = NilmDataset(spec, path)
 
         # Dataset is structured as multiple long size windows
-        self.data = []
         # As sliding windows are used to acces data, a lookup-table
         # is created as sequential index to reference each sliding
         # window (long window + offset within long window).
-        self.datamap = {}
+        self.data = []  # List to store the data of all buildings
+        self.datamap = {}  # Lookup table for sliding window indices
 
         data_index = 0
         window_index = 0
+
         for building in buildings:
-            for x in dataset.load(building, [appliance], start, end):
+            for long_window in dataset.load(building, [appliance], start, end):
                 # Calculate number of sliding windows in the long time window
-                n_windows = x.shape[0] - windowsize + 1
+                n_windows = long_window.shape[0] - windowsize + 1
 
                 # Add loaded data to dataset
-                self.data.append(x.reset_index())
+                self.data.append(long_window.reset_index())
+
                 # Update data index iteraring over all sliding windows in
                 # dataset. Each of the indexes in global map corresponds
                 # to specific long time window and offset
                 self.datamap.update(
                     {window_index + i: (data_index, i) for i in range(n_windows)}
                 )
-                data_index += 1
 
+                data_index += 1
                 window_index += n_windows
+
         self.total_size = window_index
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the total number of samples (sliding windows) in the dataset.
+        """
         return self.total_size
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns a tuple of (sample, target) for the given index.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the sliding window sample to retrieve.
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor]
+            A tuple containing the input features (mains consumption) and
+            the target output (appliance consumption) as PyTorch tensors.
+        """
         # Each of the indexes in global map corresponds
         # to specific long time window and offset. Obtain
         # long time window and offset
@@ -409,11 +457,13 @@ class InMemoryDataset(Dataset):
         start = window_index
         end = self.windowsize + window_index
 
-        # Access data
+        # Extract the input (mains) and target (appliance) data
         sample = self.data[data_index].loc[start:end, "mains"]
         target = self.data[data_index].loc[start:end, self.appliance]
 
-        return (torch.tensor(sample.values), torch.tensor(target.values))
+        return torch.tensor(sample.values, dtype=torch.float32), torch.tensor(
+            target.values, dtype=torch.float32
+        )
 
 
 class InMemoryKoreaDataset(Dataset):
