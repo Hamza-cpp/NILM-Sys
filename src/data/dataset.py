@@ -48,12 +48,10 @@ class Building:
     @property
     def get_appliances(self) -> List[str]:
         """
-        Get a list of appliance IDs
+        Get a list of appliance IDs (names of appliances).
 
-        Returns
-        -------
-        List[str]from typing import List
-            List of appliance IDs
+        Returns:
+            List[str]: List of appliance IDs.
         """
         return [appliance["id"] for appliance in self.appliances]
 
@@ -101,11 +99,11 @@ class Building:
 
         df_list = [
             redd.load(
-                appliance["id"],
-                self.path,
-                appliance["channels"],
-                start,
-                end,
+                name=appliance["id"],
+                path=self.path,
+                channels=appliance["channels"],
+                start_time=start,
+                end_time=end,
             )
             for appliance in self.appliances
             if appliance["id"] in appliances_to_load
@@ -119,76 +117,133 @@ class Building:
 
 class NilmDataset:
     """
-    NILM dataset handler
-    NOTE: This dataset handler is used when datset preprocessing required
-          - Alignment
-          - Imputation
-       Not used in current analysis due already preprocessed available
-       dataset (non-public available and obtained once project ongoing).
+    NILM dataset handler for preprocessing tasks such as alignment and imputation.
+
+    Note:
+        This dataset handler is used when dataset preprocessing is required:
+        - Alignment of time series data.
+        - Imputation of missing data.
     """
 
-    def __init__(self, spec, path):
-        self.path = path
-        spec = utils.load_yaml(spec)
+    def __init__(self, spec_path: str, dataset_path: str) -> None:
+        """
+        Initialize NILM dataset handler.
 
-        path = os.path.join(self.path, spec["path"])
-        # Load all buildings in settings
+        Args:
+            spec_path (str): Path to the dataset specification file (YAML), contains information about the dataset structure.
+            dataset_path (str): Base path where the dataset is stored.
+        """
+        self.path = dataset_path
+        spec = utils.load_yaml(spec_path)
+
+        dataset_full_path = os.path.join(self.path, spec["path"])
+        # Load all buildings specified in settings
         self.buildings = {
-            x["name"]: Building(os.path.join(path, x["path"]), x["name"], x)
-            for x in spec["buildings"]
+            building["name"]: Building(
+                os.path.join(dataset_full_path, building["path"]),
+                building["name"],
+                building,
+            )
+            for building in spec["buildings"]
         }
 
-    def get_buildings(self):
+    def get_buildings_names(self) -> List[str]:
         """
-        Get list of buildings
+        Get a list of building names.
+
+        Returns:
+            List[str]: List of building names.
         """
         return list(self.buildings.keys())
 
-    def get_appliances(self, building):
+    def get_appliances(self, building_name: str) -> List[str]:
         """
-        Get list of appliances
-        """
-        return self.buildings[building].get_appliances()
+        Get a list of appliances for a given building.
 
-    def load_mains(self, building, start=None, end=None):
-        """
-        Load mains consumption from start to endi time interval. Using
-        dataset specific loader. Online data loader to prevent memory overrun.
-        Do not save whole dataset in memory
-        """
-        return self.buildings[building].load_mains(start, end)
+        Args:
+            building_name (str): Name of the building.
 
-    def load_appliances(self, building, appliances=[], start=None, end=None):
+        Returns:
+            List[str]: List of appliance IDs.
         """
-        Load appliance consumption from start to end time interval. Using
-        dataset specific loader. Online data loader to prevent memory overrun.
-        Do not save whole dataset in memory
+        return self.buildings[building_name].get_appliances()
+
+    def load_mains(
+        self,
+        building_name: str,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> pd.Series:
         """
-        return self.buildings[building].load_appliances(appliances, start, end)
+        Load mains consumption data for a given building within a time interval.
+
+        Args:
+            building_name (str): Name of the building.
+            start (Optional[datetime]): Start time for data loading. Defaults to None.
+            end (Optional[datetime]): End time for data loading. Defaults to None.
+
+        Returns:
+            pd.Series: Mains consumption data.
+        """
+        return self.buildings[building_name].load_mains(start, end)
+
+    def load_appliances(
+        self,
+        building_name: str,
+        appliances: Optional[List[str]] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> pd.DataFrame:
+        """
+        Load appliances consumption data for a given building within a time interval.
+
+        Args:
+            building_name (str): Name of the building.
+            appliances (Optional[List[str]]): List of appliance IDs to load. Defaults to None.
+            start (Optional[datetime]): Start time for data loading. Defaults to None.
+            end (Optional[datetime]): End time for data loading. Defaults to None.
+
+        Returns:
+            pd.DataFrame: Appliances consumption data.
+        """
+        return self.buildings[building_name].load_appliances(appliances, start, end)
 
     @staticmethod
-    def align(df1, df2, bfill=False):
+    def align(
+        df1: pd.DataFrame, df2: pd.DataFrame, bfill: bool = False
+    ) -> pd.DataFrame:
         """
-        Align two timeseries with different acquisition frequency
+        Align two timeseries with different acquisition frequencies.
+
+        Args:
+            df1 (pd.DataFrame): First DataFrame.
+            df2 (pd.DataFrame): Second DataFrame.
+            bfill (bool): Whether to perform backward filling for missing data. Defaults to False.
+
+        Returns:
+            pd.DataFrame: Aligned DataFrame with overlapping time indices.
         """
-        # Time alignment required due different acq frequency
+        # Time alignment required due to different acquisition frequencies
         if bfill:
-            # Raw backward filling done
-            newindex = df1.index
-            df2_ = df2.reindex(newindex, method="bfill")
-            df = pd.concat([df1, df2_], axis=1, join="inner")
+            # Raw Backward filling for missing values
+            aligned_df2 = df2.reindex(df1.index, method="bfill")
+            df_aligned = pd.concat([df1, aligned_df2], axis=1, join="inner")
         else:
-            df = pd.concat([df1, df2], axis=1, join="inner")
+            df_aligned = pd.concat([df1, df2], axis=1, join="inner")
 
-        return df[~df.isnull().any(axis=1)]
+        return df_aligned.dropna()
 
     @staticmethod
-    def impute(df, gapsize=20, subseqsize=28800):
+    def impute(
+        df: pd.DataFrame, gapsize: int = 20, subseqsize: int = 28800
+    ) -> List[pd.DataFrame]:
         """
+        Impute missing data in time series and split into valid subsequences.
+
         Data preprocessing to impute small gaps and ignore larg gaps
         Ignore non 100% coverage days
 
-        Extract from "Subtask Gated Networks for Non-Intrusive Load Monitoring"
+        Extract from "Subtask Gated Networks for Non-Intrusive Load Monitoring" paper
 
         For REDD dataset,we preprocessed with the following procedure
         to handle missing values. First, we split the sequence so that the
@@ -196,82 +251,101 @@ class NilmDataset:
         Second,we filled the  missing values in each subsequence by
         thebackward filling method. Finally, we only used the subsequences
         with more than one-day duration
+
+        Args:
+            df (pd.DataFrame): Input DataFrame to preprocess.
+            gapsize (int): Maximum size of gaps to fill. Defaults to 20.
+            subseqsize (int): Minimum size of subsequences to retain. Defaults to 28800.
+
+        Returns:
+            List[pd.DataFrame]: List of preprocessed DataFrames with imputed data.
         """
         df = df.sort_index()
-
-        start = df.index[0]
-        end = df.index[-1]
-        newindex = pd.date_range(start, end, freq="1S")
+        start, end = df.index[0], df.index[-1]
 
         # Appliance time series are not aligned to 3s (ie. 3,4 sec period)
-        # Use 1sec reindex in order to align to 3sec timeserie
-        df = df.reindex(newindex, method="bfill", limit=4)
-        newindex = pd.date_range(start, end, freq="3S")
-        mask = df.index.isin(newindex)
-        df = df[mask]
-        # WARNING
-        # if there is a gap with more than limit number of consecutive NaNs,
-        # it will only be partially filled.
-        df = df.fillna(method="bfill", limit=gapsize)
-        columns = df.columns
+        # Use 1sec reindex in order to align to 3sec timeserie and fill gaps
+        df = df.reindex(pd.date_range(start, end, freq="1S"), method="bfill", limit=4)
+        df = df.reindex(pd.date_range(start, end, freq="3S")).dropna(how="any")
+        df.fillna(method="bfill", limit=gapsize, inplace=True)
 
+        # Identify and split subsequences based on gap sizes
         df["rowindex"] = range(df.shape[0])
-        df = df[~df.iloc[:, 0].isnull()]
+        df = df[df.iloc[:, 0].notna()]
 
-        diffseq = df["rowindex"].diff()
         diffsec = df.index.to_series().diff().dt.total_seconds()
         # Find big gaps to split data in subsequences
-        mask = diffseq > gapsize
+        gaps = diffsec > gapsize
 
-        # List of continuous data subsequences
-        its_index = diffsec[mask].index
-        its_offset = diffsec[mask].values
+        subsequences = []
+        start = df.index[0]
 
-        data = []
-        if sum(mask) > 0:
-            start = df.index[0]
-
-            # Iterate over continuous data subsequences
-            for idx, (it, offset) in enumerate(zip(its_index, its_offset)):
-                end = it - pd.Timedelta(seconds=offset)
-                subseq = df[start:end]
-
-                # Check where subsquences in large enough. If the subsquence
-                # is not large enough then ignore, otherwise consider it valid
-                if subseq.shape[0] > subseqsize:
-                    data.append(subseq[columns])
-                start = it
-
-            # Check where subsquences in large enough. If the subsquence
-            # is not large enough then ignore, otherwise consider it valid
-            end = df.index[-1]
+        for idx, (gap_idx, gap_size) in enumerate(zip(df.index[gaps], diffsec[gaps])):
+            end = gap_idx - pd.Timedelta(seconds=gap_size)
             subseq = df[start:end]
             if subseq.shape[0] > subseqsize:
-                data.append(subseq[columns])
-        else:
-            # One single subsequence (valid or invalid)
-            data.append(df[columns])
-        return data
+                subsequences.append(subseq.drop(columns=["rowindex"]))
+            start = gap_idx
 
-    ## Filterout days without minimum amount of seconds
-    # tmp = df.groupby("date").apply(lambda x: x.shape[0])
-    # valid_dates = tmp[tmp >= subseqsize].index
-    # mask = df["date" ].isin(valid_dates)
-    # return  df[mask].drop(columns=["date"])
+        # Include the last subsequence
+        last_subseq = df[start : df.index[-1]]
+        if last_subseq.shape[0] > subseqsize:
+            subsequences.append(last_subseq.drop(columns=["rowindex"]))
 
-    def load(self, building, appliances=[], start=None, end=None, bfill=False):
-        return self.impute(
-            self.align(
-                self.load_mains(building, start, end),
-                self.load_appliances(building, appliances, start, end),
-                bfill,
-            )
+        return subsequences
+
+    def load(
+        self,
+        building_name: str,
+        appliances: Optional[List[str]] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        bfill: bool = False,
+    ) -> List[pd.DataFrame]:
+        """
+        Load and preprocess data for a given building and appliances.
+
+        Args:
+            building_name (str): Name of the building.
+            appliances (Optional[List[str]]): List of appliance IDs to load. Defaults to None.
+            start (Optional[datetime]): Start time for data loading. Defaults to None.
+            end (Optional[datetime]): End time for data loading. Defaults to None.
+            bfill (bool): Whether to perform backward filling for missing data. Defaults to False.
+
+        Returns:
+            List[pd.DataFrame]: List of preprocessed DataFrames.
+        """
+        aligned_data = self.align(
+            self.load_mains(building_name, start, end),
+            self.load_appliances(building_name, appliances, start, end),
+            bfill,
         )
+        return self.impute(aligned_data)
 
-    def load_raw(self, building, appliances=[], start=None, end=None, bfill=False):
+    def load_raw(
+        self,
+        building_name: str,
+        appliances: Optional[List[str]] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        bfill: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Load raw (unimputed) data for a given building and appliances.
+
+        Args:
+            building_name (str): Name of the building.
+            appliances (Optional[List[str]]): List of appliance IDs to load. Defaults to None.
+            start (Optional[datetime]): Start time for data loading. Defaults to None.
+            end (Optional[datetime]): End time for data loading. Defaults to None.
+            bfill (bool): Whether to perform backward filling for missing data. Defaults to False.
+
+        Returns:
+            pd.DataFrame: Raw aligned data.
+        """
         return self.align(
-            self.load_mains(building, start, end),
-            self.load_appliances(building, appliances, start, end),
+            self.load_mains(building_name, start, end),
+            self.load_appliances(building_name, appliances, start, end),
             bfill,
         )
 
