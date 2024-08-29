@@ -18,7 +18,7 @@ import random
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 from datetime import datetime
 
 import src.data.redd as redd
@@ -468,52 +468,81 @@ class InMemoryDataset(Dataset):
 
 class InMemoryKoreaDataset(Dataset):
     """
-    Inmemory dataset
-    WARNING: Not the best option, due potential memory overrun but did not fail
+    In-memory dataset for NILM (Non-Intrusive Load Monitoring) from Korea.
 
-    Arguments:
-        windowsize: Sliding window size
-        active_threshold: Active threshold used in classification
-           Default value in paper 15W
-        active_ratio: In order to prevent imbalance in data it's required
-           to balance number of active/inactive appliance windows. In most
-           of the cases the number of inactive windows is larger than
-           the number of active windows. Active ratio forces the ratio
-           between active/inactive windows by removing active/inactive
-           windows (in most cases inactive windows) till fulfilling the ratio
-        active_oversample: In order to prevent overfitting oversampling is done
+    WARNING: This dataset is stored entirely in memory, which may lead to
+    potential memory overrun issues depending on the size of the dataset.
+
+    Attributes
+    ----------
+    windowsize : int
+        Sliding window size.
+    active_threshold : float
+        Active threshold used in classification, default value in the paper is 15W.
+    active_ratio : Optional[float]
+        In order to prevent imbalance in data it's required
+        to balance number of active/inactive appliance windows. In most
+        of the cases the number of inactive windows is larger than
+        the number of active windows. Active ratio forces the ratio
+        between active/inactive windows by removing active/inactive
+        windows (in most cases inactive windows) till fulfilling the ratio.
+    active_oversample : Optional[int]
+        In order to prevent overfitting oversampling is done
         in active windows. This argument forces random oversampling
-        active_oversample times available active windows
-        transform_enabled: Used to enable data preprocessing transformation,
-           in this case standardization
-        transform: Transformation properties, in case of standardization
-           mean and standard deviation
+        active_oversample times available active windows.
+    transform_enabled : bool
+        Flag to enable data preprocessing transformation (e.g., standardization).
+    transform : Optional[Dict[str, float]]
+        Transformation properties, such as mean and standard deviation for standardization.
     """
 
-    sample_mean = None
-    sample_std = None
-    target_mean = None
-    target_std = None
+    sample_mean: Optional[float] = None
+    sample_std: Optional[float] = None
+    target_mean: Optional[float] = None
+    target_std: Optional[float] = None
 
     def __init__(
         self,
-        path,
-        buildings,
-        appliance,
-        windowsize=496,
-        active_threshold=15.0,
-        active_ratio=None,
-        active_oversample=None,
-        transform_enabled=False,
-        transform=None,
-    ):
-        super().__init__()
+        path: str,
+        buildings: List[str],
+        appliance: str,
+        windowsize: int = 496,
+        active_threshold: float = 15.0,
+        active_ratio: Optional[float] = None,
+        active_oversample: Optional[int] = None,
+        transform_enabled: bool = False,
+        transform: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """
+        Initializes the InMemoryKoreaDataset.
 
-        self.transform_enabled = transform_enabled
+        Parameters
+        ----------
+        path : str
+            Path to the dataset directory.
+        buildings : List[str]
+            List of building identifiers to include in the dataset.
+        appliance : str
+            The appliance name for which the data is being collected.
+        windowsize : int, optional
+            Size of the sliding window, by default 496.
+        active_threshold : float, optional
+            Threshold to classify a window as 'active', by default 15.0.
+        active_ratio : Optional[float], optional
+            Desired ratio between active and inactive windows, by default None.
+        active_oversample : Optional[int], optional
+            Factor to oversample active windows to prevent overfitting, by default None.
+        transform_enabled : bool, optional
+            Enable data preprocessing transformation, by default False.
+        transform : Optional[Dict[str, float]], optional
+            Transformation properties for standardization, by default None.
+        """
+        super().__init__()
 
         self.appliance = appliance
         self.windowsize = windowsize
         self.active_threshold = active_threshold
+        self.transform_enabled = transform_enabled
 
         # Dataset is structured as multiple long size windows
         self.data = []
@@ -522,37 +551,39 @@ class InMemoryKoreaDataset(Dataset):
         # window (long window + offset within long window).
         self.datamap = {}
 
-        filenames = os.listdir(path)
-
+        filenames = [
+            f for f in os.listdir(path) if any(f.startswith(b) for b in buildings)
+        ]
         columns = ["main", self.appliance]
 
         # Using original long time windows as non-related time interval windows
         # in order to prevent mixing days and concatenating not continuous
         # data. Original data has gaps between dataset files
-        self.data = [
-            pd.read_csv(os.path.join(path, filename), usecols=columns, sep=",")
-            for filename in filenames
-            for building in buildings
-            if filename.startswith(building)
-        ]
 
-        df = pd.concat(self.data)
+        # Load and preprocess data
+        self.data = [
+            pd.read_csv(os.path.join(path, filename), usecols=columns)
+            for filename in filenames
+        ]
+        df = pd.concat(self.data, ignore_index=True)
+
         # Data transformation
         if transform_enabled:
             if transform:
-                self.sample_mean = transform["sample_mean"]
-                self.sample_std = transform["sample_std"]
-                self.target_mean = transform["target_mean"]
-                self.target_std = transform["target_std"]
+                self.sample_mean = transform.get("sample_mean")
+                self.sample_std = transform.get("sample_std")
+                self.target_mean = transform.get("target_mean")
+                self.target_std = transform.get("target_std")
             else:
                 self.sample_mean = df["main"].mean()
                 self.sample_std = df["main"].std()
-                self.target_mean = df[appliance].mean()
-                self.target_std = df[appliance].std()
+                self.target_mean = df[self.appliance].mean()
+                self.target_std = df[self.appliance].std()
 
         data_index = 0
         window_index = 0
 
+        # Initialize data map for sliding windows
         for subseq in self.data:
             n_windows = subseq.shape[0] - windowsize + 1  # +1 why?
             # Update data index iteraring over all sliding windows in
@@ -566,74 +597,107 @@ class InMemoryKoreaDataset(Dataset):
 
         self.total_size = window_index
 
+        # Balance active and inactive samples if active_ratio is specified
         if active_ratio:
-            # Fix imbalance required
-            map_indexes = list(self.datamap.keys())
-            # Shuffle indexes in order to prevent oversampling using same
-            # building or continuous windows
-            random.shuffle(map_indexes)
+            self._balance_classes(active_ratio, active_oversample)
 
-            # Active and inactive buffers are used to manage classified
-            # sliding windows and use them later to fix imbalance
-            active_indexes = []
-            inactive_indexes = []
+    def _balance_classes(
+        self, active_ratio: float, active_oversample: Optional[int]
+    ) -> None:
+        """
+        Balances the dataset to maintain a specific ratio between active and inactive samples.
 
-            # Classify every sliding window as active or inactive using
-            # active_threshold as threshold
-            for i, index in enumerate(map_indexes):
-                data_index, window_index = self.datamap[index]
-                start = window_index
-                end = self.windowsize + window_index
+        Parameters
+        ----------
+        active_ratio : float
+            Desired ratio of active to inactive windows.
+        active_oversample : Optional[int]
+            Number of times to oversample active windows.
+        """
+        map_indexes = list(self.datamap.keys())
+        # Shuffle indexes in order to prevent oversampling using same
+        # building or continuous windows
+        random.shuffle(map_indexes)
 
-                # Retreive sliding window from data
-                subseq = self.data[data_index].loc[start : (end - 1), self.appliance]
-                if subseq.shape[0] != self.windowsize:
-                    continue
+        # Active and inactive buffers are used to manage classified
+        # sliding windows and use them later to fix imbalance
+        active_indexes = []
+        inactive_indexes = []
 
-                # Fill active and inactive buffers to be used later to
-                # fix imbalance
-                if (subseq > active_threshold).any():  # is there any active ?
-                    active_indexes.append(index)
-                else:
-                    inactive_indexes.append(index)
+        # Classify every sliding window as active or inactive using
+        # active_threshold as threshold
+        for i, index in enumerate(map_indexes):
+            data_index, window_index = self.datamap[index]
+            start = window_index
+            end = self.windowsize + window_index
 
-                if (i % 1000) == 0:
-                    print(
-                        "Loading {}: {}/{}".format(self.appliance, i, len(map_indexes))
-                    )
-            if active_oversample:
-                # If oversample is required increase representation
-                active_indexes = active_indexes * active_oversample
+            # Retreive sliding window from data
+            subseq = self.data[data_index].loc[start : (end - 1), self.appliance]
+            if subseq.shape[0] != self.windowsize:
+                continue
 
-            # Identify imbalance by calculating active/inactive ratio
-            n_active = len(active_indexes)
-            n_inactive = len(inactive_indexes)
-
-            # Update number of active/inactive windows to fulfill required
-            # ratio and fix imbalance
-            n_inactive_ = int((n_active * (1.0 - active_ratio)) / active_ratio)
-            n_active_ = int((n_inactive * active_ratio) / (1.0 - active_ratio))
-
-            if n_inactive > n_inactive_:
-                n_inactive = n_inactive_
+            # Fill active and inactive buffers to be used later to
+            # fix imbalance
+            if (subseq > self.active_threshold).any():  # is there any active ?
+                active_indexes.append(index)
             else:
-                n_active = n_active_
+                inactive_indexes.append(index)
 
-            # Obtain valid indexes after imbalance analysis
-            valid_indexes = active_indexes[:n_active] + inactive_indexes[:n_inactive]
+            if (i % 1000) == 0:
+                print(f"Loading {self.appliance}: {i}/{len(map_indexes)}")
 
-            # Update datamap with fixed indexes in order to point to
-            # proper sliding windows
-            datamap = {}
-            for dst_index, src_index in enumerate(valid_indexes):
-                datamap[dst_index] = self.datamap[src_index]
-            self.datamap = datamap
-            self.total_size = len(self.datamap.keys())
+        if active_oversample:
+            # If oversample is required increase representation
+            active_indexes = active_indexes * active_oversample
 
-    def __len__(self):
+        # Identify imbalance by calculating active/inactive ratio
+        n_active = len(active_indexes)
+        n_inactive = len(inactive_indexes)
+
+        # Update number of active/inactive windows to fulfill required
+        # ratio and fix imbalance
+        n_inactive_ = int((n_active * (1.0 - active_ratio)) / active_ratio)
+        n_active_ = int((n_inactive * active_ratio) / (1.0 - active_ratio))
+
+        if n_inactive > n_inactive_:
+            n_inactive = n_inactive_
+        else:
+            n_active = n_active_
+
+        # Obtain valid indexes after imbalance analysis
+        valid_indexes = active_indexes[:n_active] + inactive_indexes[:n_inactive]
+
+        # Update datamap with fixed indexes in order to point to
+        # proper sliding windows
+        datamap = {}
+        for dst_index, src_index in enumerate(valid_indexes):
+            datamap[dst_index] = self.datamap[src_index]
+        self.datamap = datamap
+        self.total_size = len(self.datamap.keys())
+
+    def __len__(self) -> int:
+        """
+        Returns the total number of samples (sliding windows) in the dataset.
+        """
         return self.total_size
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns a tuple of (sample, target, classification) for the given index.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the sliding window sample to retrieve.
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+            A tuple containing the input features (mains consumption),
+            the target output (appliance consumption), and the classification label
+            as PyTorch tensors.
+        """
+
         # Loader asking for specific sliding window in specific index
         # Calculate long time window and offset in order to retrieve data
         # Input data is obtained from mains time serie, target data is
