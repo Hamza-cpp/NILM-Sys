@@ -18,6 +18,8 @@ import random
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from typing import List, Optional
+from datetime import datetime
 
 import src.data.redd as redd
 import src.utils as utils
@@ -25,51 +27,94 @@ import src.utils as utils
 
 class Building:
     """
-    Building consumption handler - definition of appliances and main
-    consumption.
+    Building consumption class handler - defines appliances and main
+    consumption data processing.
     """
 
-    def __init__(self, path, name, spec):
+    def __init__(self, path: str, name: str, spec: dict) -> None:
+        """
+        Initialize Building class.
+
+        Args:
+            path (str): Path to the building data.
+            name (str): Name of the building.
+            spec (Dict): Specification of the building, including mains and appliances channels.
+        """
         self.path = path
         self.name = name
-
-        self.mains = spec["mains"]
+        self.mains_channel = spec["mains"]
         self.appliances = spec["appliances"]
 
-    def get_appliances(self):
+    @property
+    def get_appliances(self) -> List[str]:
         """
-        Get list of appliances
-        """
-        return [x["id"] for x in self.appliances]
+        Get a list of appliance IDs
 
-    def load_mains(self, start, end):
+        Returns
+        -------
+        List[str]from typing import List
+            List of appliance IDs
         """
-        Load mains consumption from start to end time interval. Using
-        dataset specific loader. Online data loader to prevent memory overrun.
-        Do not save whole dataset in memory
-        """
-        return redd.load("mains", self.path, self.mains["channels"], start, end)
+        return [appliance["id"] for appliance in self.appliances]
 
-    def load_appliances(self, appliances=[], start=None, end=None):
+    def load_mains(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> pd.Series:
         """
-        Load appliance consumption from start to end time interval. Using
-        dataset specific loader. Online data loader prevent memory overrun.
-        Do not save whole dataset in memory
+        Load mains consumption data for a specified time interval. Using dataset specific loader
+
+        Args:
+            start_time (Optional[datetime]): Start time for loading data. Defaults to None.
+            end_time (Optional[datetime]): End time for loading data. Defaults to None.
+
+        Returns:
+            pd.Series: A pandas Series object containing mains consumption data.
         """
-        if not appliances:
-            appliances = [x["id"] for x in self.appliances]
+        return redd.load(
+            name="mains",
+            path=self.path,
+            channels=self.mains_channel,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+    def load_appliances(
+        self,
+        appliances: Optional[List[str]] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> pd.DataFrame:
+        """
+        Load appliance consumption data for a specified time interval.
+
+        Args:
+            appliances (Optional[List[str]]): List of appliance IDs to load. Defaults to None.
+            start (Optional[datetime]): Start time for loading data. Defaults to None.
+            end (Optional[datetime]): End time for loading data. Defaults to None.
+
+        Returns:
+            pd.DataFrame: DataFrame containing appliance consumption data.
+        """
+        appliances_to_load = appliances or self.appliances_ids
+
+        df_list = [
+            redd.load(
+                appliance["id"],
+                self.path,
+                appliance["channels"],
+                start,
+                end,
+            )
+            for appliance in self.appliances
+            if appliance["id"] in appliances_to_load
+        ]
 
         # WARNING: Time series inner join. Ignoring non-synced
         # datapoints from loaded chanels
-        return pd.concat(
-            [
-                redd.load(x["id"], self.path, x["channels"], start, end)
-                for x in self.appliances
-                if x["id"] in appliances
-            ],
-            axis=1,
-            join="inner",
-        )
+        # Merge the dataframes on their indices with an inner join
+        return pd.concat(df_list, axis=1, join="inner")
 
 
 class NilmDataset:
