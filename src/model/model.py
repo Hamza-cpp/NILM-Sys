@@ -12,55 +12,109 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 import torch
+from typing import Tuple
 import torch.nn as nn
 import torch.nn.functional as F
 
-sys.path.append("/content/gdrive/MyDrive/ColabNotebooks")
 
-
-class AdditiveAttention(torch.nn.Module):
+class AdditiveAttention(nn.Module):
     """
-    Attention mechanism for the models
+    Attention mechanism for models. Adaptable to various input dimensions.
+
+    Attributes
+    ----------
+    dim : int
+        Dimensionality of the input features.
+    W : nn.Linear
+        Linear layer to transform the input.
+    V : nn.Linear
+        Linear layer to compute the attention scores.
     """
 
-    def __init__(self, dim=5):
+    def __init__(self, dim: int = 5) -> None:
+        """
+        Initializes the AdditiveAttention module.
+
+        Parameters
+        ----------
+        dim : int, optional
+            Dimensionality of the input features to the attention mechanism, by default 5.
+        """
         super().__init__()
-
         self.dim = dim
 
-        # Using paper notation (W, V)
+        # Linear transformations for additive attention mechanism
         self.W = nn.Linear(self.dim, self.dim)
         self.V = nn.Linear(self.dim, 1, bias=False)
 
-    def forward(self, h):
+    def forward(self, h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass for the additive attention mechanism.
+
+        Parameters
+        ----------
+        h : torch.Tensor
+            Input tensor of shape (batch_size, sequence_length, input_dim).
+
+        Returns
+        -------
+        output : torch.Tensor
+            Output tensor (the context vector) after applying attention, shape (batch_size, input_dim).
+        alphas : torch.Tensor
+            Attention weights for each input, shape (batch_size, sequence_length, 1).
+        """
         # Paper attenation mechanism
         #   et = V*tanh(W*ht + b)
         #   αt = softmax(et)
         #   c = sum(αt*ht)
-        layer_1 = self.W(h)
-        layer_1 = torch.tanh(layer_1)
+
+        # Compute the linear transformation and apply tanh activation
+        layer_1 = torch.tanh(self.W(h))
+
+        # Compute attention scores using V
         layer_2 = self.V(layer_1)
+
+        # Compute the attention weights using softmax
         alphas = F.softmax(layer_2, dim=1)
+
+        # Apply attention weights to input
+        # Element-wise multiplication, broadcasting alphas to match h's shape
         c = h * alphas  # [batch, l, 2*h] x [batch, l, 1] = [batch, l, 2*h]
+
+        # Sum over the sequence length dimension to compute the context vector
         output = torch.sum(
-            c, 1
+            c, dim=1
         )  # sum elements in dimension 1 (seq_length) [batch, 2*h]
+
         return output, alphas
 
 
 class AdditiveAttentionBackwards(AdditiveAttention):
     """
-    Attention mechanism for the models
-    NOTE: Nearly same implementation as main additive attention
-    but used in order to make it backwards compatible as some
-    models have already been trained using this mode. Otherwise
-    fails loading the model due non-matching architecture
+    Backward-compatible version of Additive Attention for legacy models.
+
+    This class maintains compatibility with older models by preserving the
+    forward method signature and output.
+
+    NOTE
+    ----
+        Nearly same implementation as main additive attention but used in order to make
+        it backwards compatible as some models have already been trained using this mode.
+        Otherwise fails loading the model due non-matching architecture
     """
 
-    def forward(self, h):
-        output, alphas = super().forward(h)
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for backward-compatible additive attention.
+
+        Args:
+            h (torch.Tensor): Input tensor of shape (batch_size, sequence_length, dim)
+
+        Returns:
+            output (torch.Tensor): The attended context vector of shape (batch_size, dim)
+        """
+        output, _ = super().forward(h)
         return output
 
 
