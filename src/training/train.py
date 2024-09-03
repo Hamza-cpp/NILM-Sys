@@ -14,223 +14,62 @@
 
 import os
 import pprint
-
 from datetime import datetime
 
+import torch
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn.functional as F
 import torch.optim as optim
 
 import src.model.model as nilmmodel
-import matplotlib.pyplot as plt
-
 from src.data.dataset import InMemoryKoreaDataset
-from src.utils.utils import error
+from src.utils.file_io import save_results_to_csv
+from src.utils.plotting import plot_results
 from src.utils.utils import save_model, load_model, save_dataset
-from src.utils.utils import plot_window
+from src.training.train_eval_epoch import train_single_epoch, eval_single_epoch
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-def summary(path, results):
+def save_training_summary(output_path: str, results: list) -> None:
     """
-    Helper method used to save training results
-    Plot train vs validation loss and error to diagnose
-       - Underfitting
-       - Overfitting
-       - Good fitting
+    Save training summary results to CSV files and plot graphs for analysis.
+
+    This function generates CSV files and plots comparing training and evaluation loss and error,
+    which can help diagnose underfitting, overfitting, or good fitting.
+
+    Parameters
+    ----------
+    output_path : str
+        The directory path where the results and plots will be saved.
+    results : list
+        A list of tuples containing epoch number, training loss, training error, evaluation loss, and evaluation error.
     """
+    # Create a DataFrame from the results list
     df = pd.DataFrame(
         [
             {
-                "epoch": x[0][0],
-                "train_loss": x[0][1],
-                "train_err": x[0][2],
-                "eval_loss": x[1][1],
-                "eval_err": x[1][2],
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "train_err": train_err,
+                "eval_loss": eval_loss,
+                "eval_err": eval_err,
             }
-            for x in results
+            for ((epoch, train_loss, train_err), (_, eval_loss, eval_err)) in results
         ]
     ).set_index("epoch")
 
-    # Plot train vs eval loss to make diagnose
-    columns = ["train_loss", "eval_loss"]
-    filename = os.path.join(path, "results-loss.csv")
-    df[columns].round(3).to_csv(filename, sep=";")
-    filename = os.path.join(path, "results-loss.png")
+    # Define columns for loss and error
+    loss_columns = ["train_loss", "eval_loss"]
+    error_columns = ["train_err", "eval_err"]
 
-    plt.figure(1, figsize=(10, 8))
-    df[columns].round(3).plot()
-    plt.savefig(filename)
-    plt.clf()
+    # Save results to CSV
+    save_results_to_csv(df, output_path, "results-loss.csv", loss_columns)
+    save_results_to_csv(df, output_path, "results-error.csv", error_columns)
 
-    # Plot train vs eval error to make diagnose
-    columns = ["train_err", "eval_err"]
-    filename = os.path.join(path, "results-error.csv")
-    df[columns].round(3).to_csv(filename, sep=";")
-    filename = os.path.join(path, "results-error.png")
-
-    plt.figure(1, figsize=(10, 8))
-    df[columns].round(3).plot()
-    plt.savefig(filename)
-    plt.clf()
-
-
-def train_single_epoch(
-    epoch, model, train_loader, transform, optimizer, eval_loader, plotfilename=None
-):
-    """
-    Train single epoch for specific model and appliance
-    """
-    model.train()
-    errs, losses = [], []
-
-    start = datetime.now()  # setup a timer for the train
-    for idx, (x, y, clas) in enumerate(train_loader):
-        # Prepare model input data
-        x = torch.unsqueeze(x, dim=1)
-
-        optimizer.zero_grad()
-        x, y, clas = x.to(device), y.to(device), clas.to(device)
-        yhat, reghat, alphas, clashat = model(x)
-
-        # Calculate prediction loss. See network architecture
-        # and loss details in documentation
-        loss_out = F.mse_loss(yhat, y)
-
-        # Different loss functions are used depending on model_type
-        # If classification is disabled loss function do not take
-        # care of classification loss
-        if model.classification_enabled:
-            loss_clas = F.binary_cross_entropy(clashat, clas)
-            loss = loss_out + loss_clas
-        else:
-            loss = loss_out
-
-        loss.backward()
-        optimizer.step()
-        err = error(y, yhat)
-
-        loss_, err_ = loss.item(), err.item()
-        losses.append(loss_)
-        errs.append(err_)
-
-        if idx % 100 == 0:
-            # Plotting sliding window samples in order to debug or
-            # keep track of current testing process
-            print(f"train epoch={epoch} batch={idx+1} loss={loss:.2f} err={err:.2f}")
-            if plotfilename:
-                filename = plotfilename + f".{idx}.png"
-                x = x.cpu()
-                y = y.cpu()
-                yhat = yhat.cpu()
-                reghat = reghat.cpu()
-                if transform:
-                    # If transform enabled undo standardization in order
-                    # to proper visualize regression branch prediction
-                    x = (x * transform["sample_std"]) + transform["sample_mean"]
-                    y = (y * transform["target_std"]) + transform["target_mean"]
-                    yhat = (yhat * transform["target_std"]) + transform["target_mean"]
-                    reghat = (reghat * transform["sample_std"]) + transform[
-                        "sample_mean"
-                    ]
-                    # Tricky workaround to rescale regression output and make
-                    # it easier to visualize and interpret results
-                    reghat = reghat / 10.0
-                plot_window(
-                    x,
-                    y,
-                    yhat,
-                    reghat,
-                    clashat.cpu(),
-                    alphas.cpu(),
-                    loss_,
-                    err_,
-                    model.classification_enabled,
-                    filename,
-                )
-
-    end = datetime.now()
-    total_seconds = (end - start).seconds
-    print("------------------------------------------")
-    print(f"Epoch seconds: {total_seconds}")
-    print("------------------------------------------")
-
-    return np.mean(losses), np.mean(errs)
-
-
-def eval_single_epoch(model, eval_loader, transform, plotfilename=None):
-    """
-    Eval single epoch for specific model and appliance
-    """
-
-    errs, losses = [], []
-    with torch.no_grad():
-        model.eval()
-        for idx, (x, y, clas) in enumerate(eval_loader):
-            # Prepare model input data
-            x = torch.unsqueeze(x, dim=1)
-
-            x, y, clas = x.to(device), y.to(device), clas.to(device)
-            yhat, reghat, alphas, clashat = model(x)
-
-            # Calculate prediction loss. See network architecture
-            # and loss details in documentation
-            loss_out = F.mse_loss(yhat, y)
-
-            # Different loss functions are used depending on model_type
-            # If classification is disabled loss function do not take
-            # care of classification loss
-            if model.classification_enabled:
-                loss_clas = F.binary_cross_entropy(clashat, clas)
-                loss = loss_out + loss_clas
-            else:
-                loss = loss_out
-            err = error(y, yhat)
-
-            loss_, err_ = loss.item(), err.item()
-            losses.append(loss_)
-            errs.append(err_)
-
-            if idx % 100 == 0:
-                # Plotting sliding window samples in order to debug or
-                # keep track of current testing process
-                print(f"eval batch={idx+1} loss={loss:.2f} err={err:.2f}")
-                if plotfilename:
-                    filename = plotfilename + f".{idx}.attention.png"
-                    x = x.cpu()
-                    y = y.cpu()
-                    yhat = yhat.cpu()
-                    reghat = reghat.cpu()
-                    if transform:
-                        # If transform enabled undo standardization in order
-                        # to proper visualize regression branch prediction
-                        x = (x * transform["sample_std"]) + transform["sample_mean"]
-                        y = (y * transform["target_std"]) + transform["target_mean"]
-                        yhat = (yhat * transform["target_std"]) + transform[
-                            "target_mean"
-                        ]
-                        reghat = (reghat * transform["sample_std"]) + transform[
-                            "sample_mean"
-                        ]
-                        # Tricky workaround to rescale regression output and make
-                        # it easier to visualize and interpret results
-                        reghat = reghat / 10.0
-                    plot_window(
-                        x,
-                        y,
-                        yhat,
-                        reghat,
-                        clashat.cpu(),
-                        alphas.cpu(),
-                        loss_,
-                        err_,
-                        model.classification_enabled,
-                        filename,
-                    )
-    return np.mean(losses), np.mean(errs)
+    # Plot results
+    plot_results(df, output_path, "results-loss.png", loss_columns, "Loss")
+    plot_results(df, output_path, "results-error.png", error_columns, "Error")
 
 
 def train_model(datapath, output, appliance, hparams, doplot=None, reload=True):
@@ -391,7 +230,7 @@ def train_model(datapath, output, appliance, hparams, doplot=None, reload=True):
     print("------------------------------------------")
 
     # Save model training results
-    summary(output, results)
+    save_training_summary(output, results)
 
     return model, transform
 
