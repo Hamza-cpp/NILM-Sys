@@ -17,9 +17,9 @@ import argparse
 import torch
 from ray import tune
 
-from src.utils import load_yaml
-from src.train import train_model
-from src.test import test_model
+from src.utils.utils import load_yaml
+from src.training.train import train_model
+from src.testing.test import test_model
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 

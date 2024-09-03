@@ -21,9 +21,9 @@ import torch
 import src.model.model as nilmmodel
 
 from src.data.dataset import InMemoryKoreaDataset
-from src.utils import error
-from src.utils import load_model
-from src.utils import plot_window
+from src.utils.utils import error
+from src.utils.utils import load_model
+from src.utils.utils import plot_window
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 

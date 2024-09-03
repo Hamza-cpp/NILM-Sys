@@ -22,7 +22,7 @@ from typing import List, Optional, Tuple, Dict
 from datetime import datetime
 
 import src.data.redd as redd
-import src.utils as utils
+import src.utils.utils as utils
 
 
 class Building:
