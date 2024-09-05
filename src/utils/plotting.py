@@ -70,12 +70,12 @@ def plot_intermediate_results(
     Args:
         plotfilename (str): Filename prefix for saving plots.
         batch_index (int): Current batch index.
-        inputs (torch.Tensor): Input data.
-        targets (torch.Tensor): Ground truth targets.
+        inputs (torch.Tensor): Input data (total aggregated power).
+        targets (torch.Tensor): Ground truth targets (appliance actual power).
         predictions (torch.Tensor): Model predictions.
-        reg_outputs (torch.Tensor): Regression output from the model.
-        alphas (torch.Tensor): Attention weights from the model.
-        class_predictions (torch.Tensor): Class predictions from the model.
+        reg_outputs (torch.Tensor): Regression prediction branch.
+        alphas (torch.Tensor): Attention weights show which parts of the input the model is focusing on to make its prediction.
+        class_predictions (torch.Tensor): Classification predictions branch.
         transform (dict): Dictionary containing mean and std for standardization.
         classification_enabled (bool): Whether classification is enabled.
         loss (float): Current loss value.
@@ -100,26 +100,34 @@ def plot_intermediate_results(
         reg_outputs = (reg_outputs * transform["sample_std"]) + transform["sample_mean"]
         reg_outputs /= 10.0  # Rescale regression output for visualization
 
-    plot_window(
-        inputs,
-        targets,
-        predictions,
-        reg_outputs,
-        class_predictions.cpu(),
-        alphas.cpu(),
-        loss,
-        error,
-        classification_enabled,
-        filename,
+    plot_time_series(
+        inputs=inputs,
+        targets=targets,
+        predictions=predictions,
+        reg_outputs=reg_outputs,
+        class_predictions=class_predictions,
+        alphas=alphas,
+        classification_enabled=classification_enabled,
+        filename=filename,
+        loss=loss,
+        error=error,
     )
 
 
-def plot_window(
-    x, y, yhat, reg, clas, alphas, loss, err, classification_enabled, filename
-):
+def plot_time_series(
+    inputs: torch.Tensor,
+    targets: torch.Tensor,
+    predictions: torch.Tensor,
+    reg_outputs: torch.Tensor,
+    class_predictions: torch.Tensor,
+    alphas: torch.Tensor,
+    classification_enabled: bool,
+    filename: str,
+    loss: float,
+    error: float,
+) -> None:
     """
-    Plot sliding window to visualize disaggregation results, keep track
-    of results in training or testing and debugging
+    Plot sliding window to visualize disaggregation results, track results in training or testing, and debug.
 
     Plotting multipel time series
        - Aggregated demand
@@ -127,45 +135,97 @@ def plot_window(
        - Disaggregation prediction
        - Regression branch prediction
        - Classification branch prediction
+
+    Parameters
+    ----------
+    inputs : torch.Tensor
+        Input data (total aggregated power).
+    targets : torch.Tensor
+        Ground truth targets (appliance actual power).
+    predictions : torch.Tensor
+        Model (Network) predictions.
+    reg_outputs : torch.Tensor
+        Regression prediction branch.
+    class_predictions : torch.Tensor
+        Classification predictions branch.
+    alphas : torch.Tensor
+        Attention weights show which parts of the input the model is focusing on to make its prediction.
+    classification_enabled : bool
+        Whether classification is enabled.
+    filename : str
+        Filename for saving the plot.
+    loss : float
+        Loss value.
+    error : float
+        Error value.
     """
-    subplt_x = 4
-    subplt_y = 4
-    plt.figure(1, figsize=(20, 16))
+
+    subplt_x, subplt_y = 4, 4
+    plt.figure(figsize=(20, 16))
     plt.subplots_adjust(top=0.88)
 
-    idxs = np.random.randint(len(x), size=(subplt_x * subplt_y))
+    idxs = np.random.randint(len(inputs), size=(subplt_x * subplt_y))
     for i, idx in enumerate(idxs):
-        x_, y_, yhat_, reg_, clas_ = (
-            x.detach().numpy()[idx][0],
-            y.detach().numpy()[idx],
-            yhat.detach().numpy()[idx],
-            reg.detach().numpy()[idx],
-            clas.detach().numpy()[idx],
+        input_, target_, prediction_, reg_output_, class_prediction_ = (
+            inputs.detach().numpy()[idx][0],
+            targets.detach().numpy()[idx],
+            predictions.detach().numpy()[idx],
+            reg_outputs.detach().numpy()[idx],
+            class_predictions.detach().numpy()[idx],
         )
         alphas_ = alphas.detach().numpy()[idx].flatten()
+
+        # Plot the time series data
         ax1 = plt.subplot(subplt_x, subplt_y, i + 1)
         ax2 = ax1.twinx()
-        ax1.plot(range(len(x_)), x_, color="b", label="x")
-        ax1.plot(range(len(y_)), y_, color="r", label="y")
-        ax1.plot(range(len(reg_)), reg_, color="black", label="reg")
-        ax1.plot(range(len(yhat_)), yhat_, alpha=0.5, color="orange", label="yhat")
-        ax2.fill_between(
-            range(len(alphas_)), alphas_, alpha=0.5, color="lightgrey", label="alpha"
+        ax1.plot(
+            range(len(input_)),
+            input_,
+            color="b",
+            label="Input (total power)",
         )
+        ax1.plot(
+            range(len(target_)),
+            target_,
+            color="r",
+            label="Target (appliance power)",
+        )
+        ax1.plot(
+            range(len(reg_output_)),
+            reg_output_,
+            color="black",
+            label="Regression prediction",
+        )
+        ax1.plot(
+            range(len(prediction_)),
+            prediction_,
+            # alpha=0.5,
+            color="orange",
+            label="Network prediction",
+        )
+        ax2.fill_between(
+            range(len(alphas_)),
+            alphas_,
+            alpha=0.5,
+            color="lightgrey",
+            label="Attention Weights",
+        )
+
         if classification_enabled:
             alphas_max = np.max(alphas_)
             ax2.plot(
-                range(len(clas_)),
-                clas_ * alphas_max,
+                range(len(class_prediction_)),
+                class_prediction_ * alphas_max,
                 color="cyan",
-                alpha=0.25,
-                label="reg",
+                # alpha=0.25,
+                label="Classification prediction",
             )
 
-    plt.suptitle(f"loss {loss:.2f} error {err:.2f}")
+    plt.suptitle(f"Loss: {loss:.2f} | Error: {error:.2f}")
     ax1.legend()
     ax2.legend()
     plt.legend()
     plt.tight_layout()
     plt.savefig(filename)
     plt.clf()
+    print(f"Plot saved to {filename}")
