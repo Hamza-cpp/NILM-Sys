@@ -12,6 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Neural Network Architectures for Appliance Disaggregation
+=========================================================
+
+inspired by the paper
+`Subtask Gated Networks for Non-Intrusive Load Monitoring`.
+-----------------------------------------------------------
+
+This module provides a collection of neural network architectures designed for appliance disaggregation tasks. Each architecture is implemented as a PyTorch model and can be easily extended or modified for specific use cases.
+
+Models
+------
+
+The following models are available in this module:
+1. **ModelPaper**
+   This model implements the architecture described in the paper "Subtask Gated Networks for Non-Intrusive Load Monitoring". It features both regression and classification branches, with attention mechanisms in the regression branch.
+
+2. **ModelPaperBackward**
+   This model is a backward-compatible version of `ModelPaper`, designed to match the architecture of previously trained models.
+
+3. **ModelOnlyRegression**
+   This model implements only the regression branch of the `ModelPaper` architecture, removing the classification branch.
+
+4. **ModelClassAttention**
+   This model extends the `ModelPaper` architecture by incorporating attention mechanisms in both the regression and classification branches.
+
+Usage
+-----
+To use these models, simply import the desired model class and instantiate it with the required parameters. For example:
+
+    >>> from this_module import ModelPaper
+    >>> model = ModelPaper(sequence_length=100, num_filters=32, kernel_size=5, hidden_units=128)
+You can then use the model instance for training, evaluation, or inference.
+
+License
+-------
+This module is licensed under [the Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0). See the ***LICENSE*** file for details.
+"""
+
 import torch
 from typing import Tuple
 import torch.nn as nn
@@ -121,7 +160,7 @@ class AdditiveAttentionBackwards(AdditiveAttention):
 class ModelPaper(nn.Module):
     """
     Neural network architecture for appliance disaggregation inspired by
-    the paper "Neural network architecture inspired by the paper".
+    the paper "Subtask Gated Networks for Non-Intrusive Load Monitoring".
 
     This model performs both regression and classification tasks
     using convolutional, LSTM, and attention mechanisms.
@@ -510,7 +549,7 @@ class ModelOnlyRegression(nn.Module):
     """
     Neural network architecture for appliance disaggregation using only the regression branch.
 
-    This model implements the network architecture described in the paper "Neural network architecture inspired by the paper",
+    This model implements the network architecture described in the paper "Subtask Gated Networks for Non-Intrusive Load Monitoring",
     with the classification branch removed. Only the regression branch is trained
     and used to predict appliance disaggregation.
 
