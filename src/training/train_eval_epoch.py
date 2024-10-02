@@ -76,27 +76,27 @@ def train_single_epoch(
         # Calculate error
         error_value = error(targets, predictions)
 
-        batch_losses.append(loss.item())
-        batch_errors.append(error_value.item())
+        batch_losses.append(loss.cpu().item())
+        batch_errors.append(error_value.cpu().item())
 
         if batch_index % 100 == 0:
             # Plotting sliding window samples in order to debug or
             # keep track of current testing process
-            log_training_progress(epoch, batch_index, loss, error_value)
+            log_training_progress(epoch, batch_index, loss.cpu().item(), error_value.cpu().item())
             if plotfilename:
                 plot_intermediate_results(
                     plotfilename,
                     batch_index,
-                    inputs,
-                    targets,
-                    predictions,
-                    reg_outputs,
-                    alphas,
-                    class_predictions,
+                    inputs.cpu(),
+                    targets.cpu(),
+                    predictions.cpu(),
+                    reg_outputs.cpu(),
+                    alphas.cpu(),
+                    class_predictions.cpu(),
                     transform,
                     model.classification_enabled,
-                    loss.item(),
-                    error_value.item(),
+                    loss.cpu().item(),
+                    error_value.cpu().item(),
                 )
 
     epoch_duration = (datetime.now() - start_time).seconds
@@ -144,28 +144,28 @@ def eval_single_epoch(
             loss = compute_loss(model, targets, predictions, classes, class_predictions)
             error_value = error(targets, predictions)
 
-            batch_losses.append(loss.item())
-            batch_errors.append(error_value.item())
+            batch_losses.append(loss.cpu().item())
+            batch_errors.append(error_value.cpu().item())
 
             if batch_index % 100 == 0:
                 # Plotting sliding window samples in order to debug or
                 # keep track of current testing process
-                log_evaluation_progress(batch_index, loss, error_value)
+                log_evaluation_progress(batch_index, loss.cpu().item(), error_value.cpu().item())
 
                 if plotfilename:
                     plot_intermediate_results(
                         plotfilename,
                         batch_index,
-                        inputs,
-                        targets,
-                        predictions,
-                        reg_outputs,
-                        alphas,
-                        class_predictions,
+                        inputs.cpu(),
+                        targets.cpu(),
+                        predictions.cpu(),
+                        reg_outputs.cpu(),
+                        alphas.cpu(),
+                        class_predictions.cpu(),
                         transform,
                         model.classification_enabled,
-                        loss.item(),
-                        error_value.item(),
+                        loss.cpu().item(),
+                        error_value.cpu().item(),
                         eval_mode=True,
                     )
 

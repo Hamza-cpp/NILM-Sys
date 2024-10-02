@@ -61,6 +61,8 @@ def save_training_summary(output_path: str, results: list) -> None:
         ]
     ).set_index("epoch")
 
+    print("DataFrame created successfully")  # Debugging info
+
     # Define columns for loss and error
     loss_columns = ["train_loss", "eval_loss"]
     error_columns = ["train_err", "eval_err"]
@@ -398,9 +400,15 @@ def train_epochs(
                 plotfilename=plotfilename,
             )
 
-            results.append(
-                [(epoch, train_loss, train_err), (epoch, eval_loss, eval_err)]
-            )
+            # Ensure tensors are moved to CPU before converting to numpy
+            if isinstance(train_loss, torch.Tensor):
+                train_loss = train_loss.cpu().item()
+            if isinstance(train_err, torch.Tensor):
+                train_err = train_err.cpu().item()
+            if isinstance(eval_loss, torch.Tensor):
+                eval_loss = eval_loss.cpu().item()
+            if isinstance(eval_err, torch.Tensor):
+                eval_err = eval_err.cpu().item()
 
             print(f"=================== Epoch {epoch} SUMMARY =======================")
             print(f"Train Loss={train_loss:.2f}, Train Err={train_err:.2f}")
